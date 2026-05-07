@@ -1,0 +1,62 @@
+package com.ricedotwho.mcprotocol.protocol.packet.ingame.clientbound.level;
+
+import com.ricedotwho.mcprotocol.protocol.packet.Packet;
+import io.netty.buffer.ByteBuf;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Setter;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.BlockChangeEntry;
+
+@Getter
+@Setter
+@AllArgsConstructor
+public class ClientboundSectionBlocksUpdatePacket extends Packet {
+    private int chunkX;
+    private int chunkY;
+    private int chunkZ;
+    /**
+     * The server sends the record position in terms of the local chunk coordinate, but it is stored here in terms of global coordinates.
+     */
+    private @NonNull BlockChangeEntry[] entries;
+
+    public ClientboundSectionBlocksUpdatePacket(ByteBuf data) {
+        super(data);
+    }
+
+    public ClientboundSectionBlocksUpdatePacket(Packet packet) {
+        super(packet.getRawData());
+    }
+
+    @Override
+    public void decode(ByteBuf in) {
+        long chunkPosition = in.readLong();
+        this.chunkX = (int) (chunkPosition >> 42);
+        this.chunkY = (int) (chunkPosition << 44 >> 44);
+        this.chunkZ = (int) (chunkPosition << 22 >> 42);
+        this.entries = new BlockChangeEntry[MinecraftTypes.readVarInt(in)];
+        for (int index = 0; index < this.entries.length; index++) {
+            long blockData = MinecraftTypes.readVarLong(in);
+            short position = (short) (blockData & 0xFFFL);
+            int x = (this.chunkX << 4) + (position >>> 8 & 0xF);
+            int y = (this.chunkY << 4) + (position & 0xF);
+            int z = (this.chunkZ << 4) + (position >>> 4 & 0xF);
+            this.entries[index] = new BlockChangeEntry(Vector3i.from(x, y, z), (int) (blockData >>> 12));
+        }
+    }
+
+    @Override
+    public void encode(ByteBuf out) {
+        long chunkPosition = 0;
+        chunkPosition |= (this.chunkX & 0x3FFFFFL) << 42;
+        chunkPosition |= (this.chunkZ & 0x3FFFFFL) << 20;
+        out.writeLong(chunkPosition | (this.chunkY & 0xFFFFFL));
+        MinecraftTypes.writeVarInt(out, this.entries.length);
+        for (BlockChangeEntry entry : this.entries) {
+            short position = (short) ((entry.getPosition().getX() - (this.chunkX << 4)) << 8 | (entry.getPosition().getZ() - (this.chunkZ << 4)) << 4 | (entry.getPosition().getY() - (this.chunkY << 4)));
+            MinecraftTypes.writeVarLong(out, (long) entry.getBlock() << 12 | (long) position);
+        }
+    }
+}

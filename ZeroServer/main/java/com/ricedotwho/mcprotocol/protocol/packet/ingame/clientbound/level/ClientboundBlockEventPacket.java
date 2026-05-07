@@ -1,0 +1,103 @@
+package com.ricedotwho.mcprotocol.protocol.packet.ingame.clientbound.level;
+
+import com.ricedotwho.mcprotocol.protocol.packet.Packet;
+import io.netty.buffer.ByteBuf;
+import lombok.AllArgsConstructor;
+import lombok.Getter;
+import lombok.NonNull;
+import lombok.Setter;
+import org.cloudburstmc.math.vector.Vector3i;
+import org.geysermc.mcprotocollib.protocol.codec.MinecraftTypes;
+import org.geysermc.mcprotocollib.protocol.data.game.entity.object.Direction;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.WobbleStyle;
+import org.geysermc.mcprotocollib.protocol.data.game.level.block.value.*;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+@Getter
+@Setter
+@AllArgsConstructor
+public class ClientboundBlockEventPacket extends Packet {
+    private static final int NOTE_BLOCK = 109;
+    private static final int STICKY_PISTON = 128;
+    private static final int PISTON = 138;
+    private static final int MOB_SPAWNER = 197;
+    private static final int CHEST = 200;
+    private static final int ENDER_CHEST = 399;
+    private static final int TRAPPED_CHEST = 468;
+    private static final int END_GATEWAY = 665;
+    private static final int SHULKER_BOX_LOWER = 675;
+    private static final int SHULKER_BOX_HIGHER = 691;
+    private static final int BELL = 846;
+    private static final int COPPER_CHEST_LOWER = 1079;
+    private static final int COPPER_CHEST_HIGHER = 1086;
+    private static final int DECORATED_POT = 1153;
+    private static final Logger log = LoggerFactory.getLogger(ClientboundBlockEventPacket.class);
+
+    private @NonNull Vector3i position;
+    private int rawType;
+    private int rawValue;
+    private @Nullable BlockValueType type;
+    private @Nullable BlockValue value;
+    private int blockId;
+
+    public ClientboundBlockEventPacket(ByteBuf data) {
+        super(data);
+    }
+
+    public ClientboundBlockEventPacket(Packet packet) {
+        super(packet.getRawData());
+    }
+
+    @Override
+    public void decode(ByteBuf in) {
+        this.position = MinecraftTypes.readPosition(in);
+        this.rawType = in.readUnsignedByte();
+        this.rawValue = in.readUnsignedByte();
+        this.blockId = MinecraftTypes.readVarInt(in);
+
+        // TODO: Handle this in MinecraftTypes
+        try {
+            if (this.blockId == NOTE_BLOCK) {
+                this.type = NoteBlockValueType.from(rawType);
+                this.value = new NoteBlockValue();
+            } else if (this.blockId == STICKY_PISTON || this.blockId == PISTON) {
+                this.type = PistonValueType.from(rawType);
+                this.value = new PistonValue(Direction.from(Math.abs((rawValue & 7) % 6)));
+            } else if (this.blockId == MOB_SPAWNER) {
+                this.type = MobSpawnerValueType.from(rawType - 1);
+                this.value = new MobSpawnerValue();
+            } else if (this.blockId == CHEST || this.blockId == ENDER_CHEST || this.blockId == TRAPPED_CHEST
+                    || (this.blockId >= SHULKER_BOX_LOWER && this.blockId <= SHULKER_BOX_HIGHER)
+                    || (this.blockId >= COPPER_CHEST_LOWER && this.blockId <= COPPER_CHEST_HIGHER)) {
+                this.type = ChestValueType.from(rawType - 1);
+                this.value = new ChestValue(rawValue);
+            } else if (this.blockId == END_GATEWAY) {
+                this.type = EndGatewayValueType.from(rawType - 1);
+                this.value = new EndGatewayValue();
+            } else if (this.blockId == BELL) {
+                this.type = BellValueType.from(rawType - 1);
+                this.value = new BellValue(Direction.from(Math.abs(rawValue % 6)));
+            } else if (this.blockId == DECORATED_POT) {
+                this.type = DecoratedPotValueType.from(rawType - 1);
+                this.value = new DecoratedPotValue(WobbleStyle.from(Math.abs(rawValue % 2)));
+            } else {
+                this.type = GenericBlockValueType.from(rawType);
+                this.value = new GenericBlockValue(rawValue);
+            }
+        } catch (Throwable t) {
+            this.type = null;
+            this.value = null;
+            log.warn("Unable to deserialize type and value! Message: {} (block: {}, type: {}, value: {})", t.getMessage(), blockId, rawType, rawValue);
+        }
+    }
+
+    @Override
+    public void encode(ByteBuf out) {
+        MinecraftTypes.writePosition(out, this.position);
+        out.writeByte(rawType);
+        out.writeByte(rawValue);
+        MinecraftTypes.writeVarInt(out, this.blockId);
+    }
+}
