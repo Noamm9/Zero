@@ -44,3 +44,12 @@ detailed instructions on how to run because critical thinking is a skill many la
      - cd rsaloader-backend
      - open terminal, do `node src/server.js`
      - launch game
+
+## How to use the zero server?
+   - clone the repository
+   - go into ZeroServer
+   - build using gradle
+   - launch it as a normal jar
+   - edit the config
+
+   - Requires ZeroClient
